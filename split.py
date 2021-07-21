@@ -1,7 +1,27 @@
+# DISCHARGE SUMMARY
+# Section headers with a focus on extracting the 'Brief Hospital Course' section
+# Manually reviewed
+dis_sum_pre_headers = [
+    # sections generally before the hosp course
+    'History of present illness:',
+    'HPI:',
+    'Chief Complaint:'
+    'Pertinent Results:',
+    'Physical Exam:'
+]
 
-# Section headers that appear after the brief hospital course.
-# manually reveiwed next section headers.
-next_section_headers = [
+dis_sum_brief_hos_course_headers = [
+    # hos course section headers...
+    'brief hospital course:',
+    'hospital course:',
+    'concise summary of hospital course by issue/system:',
+    'summary of hospital course by systems:',
+    'hospital course by systems including pertinent laboratory\ndata:',
+    'details of hospital course:',
+]
+
+dis_sum_post_headers = [
+    # sections after the hosp course section
     '\n\nMedications on Admission:',
     '\n\nCONDITION ON DISCHARGE:',
     '\n\nDictated By:',
@@ -81,7 +101,6 @@ next_section_headers = [
     '\n\nHospital course:',
     '\n\nComm:',
     '\n\nFOLLOW-UP INSTRUCTIONS:',
-    '\n\nHospital Course:',
     '\n\nSURGICAL COURSE:',
     '\n\nLABORATORY DATA ON DISCHARGE:',
     '\n\nCode status:',
@@ -98,69 +117,77 @@ next_section_headers = [
     '\n\nISSUES:',
     '\n\nFLOOR COURSE:',
     '\n\nFloor Course:',
-    '\n\nTransitional:',
+    '\n\nTransitional:'
 ]
 
-# Radiology report section headers, as listed from: https://github.com/MIT-LCP/mimic-cxr/blob/master/txt/section_parser.py
-_frequent_sections = {
-        "preamble": "preamble",  
-        "impression": "impression",  
-        "comparison": "comparison",  
-        "indication": "indication",  
-        "findings": "findings",  
-        "examination": "examination",  
-        "technique": "technique",  
-        "history": "history",  
-        "comparisons": "comparison",  
-        "clinical history": "history",  
-        "reason for examination": "indication",  
-        "notification": "notification",  
-        "reason for exam": "indication",  
-        "clinical information": "history",  
-        "exam": "examination",  
-        "clinical indication": "indication",  
-        "conclusion": "impression",  
-        "chest, two views": "findings",  
-        "recommendation(s)": "recommendations",  
-        "type of examination": "examination",  
-        "reference exam": "comparison",  
-        "patient history": "history",  
-        "addendum": "addendum",  
-        "comparison exam": "comparison",  
-        "date": "date",  
-        "comment": "comment",  
-        "findings and impression": "impression",  
-        "wet read": "wet read",  
-        "comparison film": "comparison",  
-        "recommendations": "recommendations",  
-        "findings/impression": "impression",  
-        "pfi": "history",
-        'recommendation': 'recommendations',
-        'wetread': 'wet read',
-        'ndication': 'impression',
-        'impresson': 'impression',
-        'imprression': 'impression',
-        'imoression': 'impression',
-        'impressoin': 'impression',
-        'imprssion': 'impression',
-        'impresion': 'impression',
-        'imperssion': 'impression',
-        'mpression': 'impression',
-        'impession': 'impression',
-        'findings/ impression': 'impression',  
-        'finding': 'findings',  
-        'findins': 'findings',
-        'findindgs': 'findings',  
-        'findgings': 'findings',  
-        'findngs': 'findings',  
-        'findnings': 'findings',  
-        'finidngs': 'findings',  
-        'idication': 'indication',  
-        'reference findings': 'findings',  
-        'comparision': 'comparison',  
-        'comparsion': 'comparison',  
-        'comparrison': 'comparison',  
-        'comparisions': 'comparison'  
-    }
 
-impression_section_headers = [k for k,v in _frequent_sections.items() if v == 'impression']
+### Radiology / Echo  Section Headers
+# the numbers of occurrences are wrong / different, as this is for MIMIC-III not CXR.
+frequent_sections = {
+    "preamble": "preamble",  # 227885
+    "impression": "impression",  # 187759
+    "comparison": "comparison",  # 154647
+    "indication": "indication",  # 153730
+    "findings": "findings",  # 149842
+    "examination": "examination",  # 94094
+    "technique": "technique",  # 81402
+    "history": "history",  # 45624
+    "comparisons": "comparison",  # 8686
+    "clinical history": "history",  # 7121
+    "reason for examination": "indication",  # 5845
+    "notification": "notification",  # 5749
+    "reason for exam": "indication",  # 4430
+    "clinical information": "history",  # 4024
+    "exam": "examination",  # 3907
+    "clinical indication": "indication",  # 1945
+    "conclusion": "impression",  # 1802
+    "conclusions": "impression",
+    "concusion": "impression",
+    "chest, two views": "findings",  # 1735
+    "recommendation(s)": "recommendations",  # 1700
+    "type of examination": "examination",  # 1678
+    "reference exam": "comparison",  # 347
+    "patient history": "history",  # 251
+    "addendum": "addendum",  # 183
+    "comparison exam": "comparison",  # 163
+    "date": "date",  # 108
+    "comment": "comment",  # 88
+    "findings and impression": "impression",  # 87
+    "wet read": "wet read",  # 83
+    "comparison film": "comparison",  # 79
+    "recommendations": "recommendations",  # 72
+    "findings/impression": "impression",  # 47
+    "pfi": "history",
+    'recommendation': 'recommendations',
+    'wetread': 'wet read',
+    'summary': 'impression',
+    'impresssion': 'impression',
+    'impressio': 'impression',
+    'ndication': 'impression',  # 1
+    'impresson': 'impression',  # 2
+    'imprression': 'impression',  # 1
+    'imoression': 'impression',  # 1
+    'impressoin': 'impression',  # 1
+    'imprssion': 'impression',  # 1
+    'impresion': 'impression',  # 1
+    'imperssion': 'impression',  # 1
+    'mpression': 'impression',  # 1
+    'impession': 'impression',  # 3
+    'findings/ impression': 'impression',  # ,1
+    'finding': 'findings',  # ,8
+    'findins': 'findings',
+    'findindgs': 'findings',  # ,1
+    'findgings': 'findings',  # ,1
+    'findngs': 'findings',  # ,1
+    'findnings': 'findings',  # ,1
+    'finidngs': 'findings',  # ,2
+    'idication': 'indication',  # ,1
+    'reference findings': 'findings',  # ,1
+    'comparision': 'comparison',  # ,2
+    'comparsion': 'comparison',  # ,1
+    'comparrison': 'comparison',  # ,1
+    'comparisions': 'comparison'  # ,1
+}
+
+
+impression_section_headers = [k for k,v in frequent_sections.items() if v == 'impression']

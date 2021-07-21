@@ -3,7 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from section_parser import section_text, section_echo_text, section_nurs_notes, section_physician_prog_text, \
+from section_parser import section_radiology_text, section_echo_text, section_nurs_notes, section_physician_prog_text, \
     section_physician_intensivist_note, section_physician_attnd_prog_text, \
     section_resp_care_shft_note
 
@@ -80,7 +80,7 @@ def parse_echo_report_text(df: pd.DataFrame):
 
 
 def parse_radiology_report_text(df: pd.DataFrame):
-    return _pull_out_section(df, section_text)
+    return _pull_out_section(df, section_radiology_text)
 
 
 def clean_findings(text):
@@ -129,5 +129,4 @@ if __name__ == '__main__':
     # impressions = parse_radiology_report_text(note_sample)
     # sections = parse_phys_intens_notes_text(pd.read_csv('intensivist_note_sample.csv'))
     sections = parse_phys_attend_notes_text(pd.read_csv('phys_attnd_prog_notes.csv'))
-
     print(len(sections))
