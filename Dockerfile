@@ -8,3 +8,5 @@ RUN git clone https://github.com/huggingface/transformers.git
 
 RUN pip install -e transformers/.
 
+RUN chmod u+x jupyter_start.sh && chmod u+x train_baseline.sh
+
