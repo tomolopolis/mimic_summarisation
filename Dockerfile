@@ -1,12 +1,6 @@
-FROM python:3.8
+FROM tsearle/mimic_summ:base-no-model
+
 ADD . /home/
 WORKDIR /home/
 
-RUN pip install -r requirements.txt
-
-RUN git clone https://github.com/huggingface/transformers.git
-
-RUN pip install -e transformers/.
-
-RUN chmod u+x jupyter_start.sh && chmod u+x train_baseline.sh
-
+RUN python download_hf_assets.py

@@ -1,0 +1,19 @@
+{
+  "models": {
+    "seq2seq": [
+      "t5-small",
+      "t5-base",
+      "facebook/bart-base",
+      "google/bigbird-pegasus-large-pubmed",
+      "patrickvonplaten/led-large-16384-pubmed",
+      "microsoft/prophetnet-large-uncased"
+    ],
+    "encoderDecoderModels": [
+      "bert-base-cased",
+      "emilyalsentzer/Bio_ClinicalBERT",
+      "emilyalsentzer/Bio_Discharge_Summary_BERT",
+      "google/reformer-enwik8"
+    ]
+  },
+  "metrics": ["rouge", "bertscore"]
+}
