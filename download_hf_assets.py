@@ -5,7 +5,6 @@ from datasets import load_metric
 from transformers import AutoConfig, AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel, EncoderDecoderConfig, \
     EncoderDecoderModel
 
-
 def main():
     model_type = sys.argv[1]
     model_name = sys.argv[2]
