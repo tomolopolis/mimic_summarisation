@@ -5,12 +5,13 @@ from datasets import load_metric
 from transformers import AutoConfig, AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel, EncoderDecoderConfig, \
     EncoderDecoderModel
 
+
 def main():
     model_type = sys.argv[1]
     model_name = sys.argv[2]
 
     hf_cache_dir = './hf_cache_dir/'
-    use_fast_tokenizer = True
+    use_fast_tokenizer = False
 
     if model_type == 'seq2seq':
         print(f'Downloading Seq2Seq HF model:{model_name}')
@@ -22,7 +23,7 @@ def main():
         # https://huggingface.co/transformers/model_doc/encoderdecoder.html
         print(f'Downloading EncoderDecoder HF Model:{model_name}')
         AutoConfig.from_pretrained(model_name, cache_dir=hf_cache_dir)
-        AutoTokenizer.from_pretrained(model_name, cache_dir=hf_cache_dir, use_fast=use_fast_tokenizer)
+        AutoTokenizer.from_pretrained(model_name, cache_dir=hf_cache_dir)
         EncoderDecoderModel.from_encoder_decoder_pretrained(model_name, model_name)
 
     if model_type == 'metric':
