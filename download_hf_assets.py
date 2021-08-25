@@ -1,4 +1,3 @@
-import json
 import sys
 
 from datasets import load_metric
@@ -16,8 +15,8 @@ def main():
     if model_type == 'seq2seq':
         print(f'Downloading Seq2Seq HF model:{model_name}')
         config = AutoConfig.from_pretrained(model_name, cache_dir=hf_cache_dir)
-        AutoTokenizer.from_pretrained(model_name, cache_dir=hf_cache_dir, use_fast=use_fast_tokenizer)
-        AutoModelForSeq2SeqLM.from_pretrained(model_name, config=config, cache_dir=hf_cache_dir)
+        AutoTokenizer.from_pretrained(model_name, cache_dir=hf_cache_dir, use_fast=use_fast_tokenizer,  local_files_only=True)
+        AutoModelForSeq2SeqLM.from_pretrained(model_name, config=config, cache_dir=hf_cache_dir,  local_files_only=True)
 
     if model_type == 'encoderDecoder':
         # https://huggingface.co/transformers/model_doc/encoderdecoder.html

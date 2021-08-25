@@ -1,8 +1,5 @@
 FROM tsearle/mimic_summ:base-no-model
 
-ADD . /home/
-WORKDIR /home/
-
 RUN python download_hf_assets.py "metrics" "rouge"
 
 RUN python download_hf_assets.py "seq2seq" "t5-small"
@@ -27,6 +24,6 @@ RUN python download_hf_assets.py "encoderDecoder" "emilyalsentzer/Bio_ClinicalBE
 RUN python download_hf_assets.py "encoderDecoder" "emilyalsentzer/Bio_Discharge_Summary_BERT"
 
 # can't load tokenizer?
-RUN python download_hf_assets.py "encoderDecoder"  "google/reformer-enwik8"
+#RUN python download_hf_assets.py "encoderDecoder"  "google/reformer-enwik8"
 
-RUN python donwload_hf_assets.py "metric" "rouge"
+RUN python download_hf_assets.py "metric" "rouge"
