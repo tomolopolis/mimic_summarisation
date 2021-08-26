@@ -17,7 +17,7 @@
 Fine-tuning the library models for sequence to sequence.
 """
 # You can also adapt this script on your own sequence to sequence task. Pointers for this are left as comments.
-
+import json
 import logging
 import os
 import sys
@@ -195,6 +195,12 @@ class DataTrainingArguments:
             "help": "For debugging purposes or quicker training, truncate the number of prediction examples to this "
             "value if set."
         },
+    )
+    num_rand_pred_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Randomly sample a number of predictions, associated labels and their index, during validation, testing"
+        }
     )
     num_beams: Optional[int] = field(
         default=None,
@@ -514,8 +520,16 @@ def main():
         # Some simple post-processing
         decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
 
+        # save a random sample of preds / labels
+        if data_args.num_rand_pred_samples:
+            rnd_preds = np.random.choice(range(len(decoded_preds)), data_args.num_rand_pred_samples, replace=False)
+            preds_labels_indices = [(int(i), decoded_preds[i], decoded_labels[i]) for i in rnd_preds]
+            with open(os.path.join(training_args.output_dir, 'rand_sample_preds.json'), 'w') as f:
+                json.dump(preds_labels_indices, f, indent=2)
+            logger.info('Saved a random sample of preds / labels / indices to disk in rand_sample_preds.json')
+
         result = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
-        # Extract a few results from ROUGE
+        # Extract a few results from ROUGE - rouge reported in % points vs <1.0
         result = {key: value.mid.fmeasure * 100 for key, value in result.items()}
 
         prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds]
