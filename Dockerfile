@@ -1,5 +1,7 @@
 FROM tsearle/mimic_summ:base-no-model
 
+#RUN jupyter server --generate-config
+
 RUN python download_hf_assets.py "metrics" "rouge"
 
 RUN python download_hf_assets.py "seq2seq" "t5-small"
