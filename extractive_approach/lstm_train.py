@@ -1,0 +1,145 @@
+import json
+import os
+import argparse
+
+import numpy as np
+import torch
+import torch.nn as nn
+from functools import partial
+from torch.nn import LSTM
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from lstm_model import MimicHospCourseTrainDataset, MimicHospCourseValDataset, MimicHospCourseTestDataset, LSTMClf, pad_train_sequence, pad_val_sequence, pad_test_sequence
+from datasets import load_metric
+
+os.environ['HF_DATASETS_CACHE'] = '/data/users/k1897038/.cache/huggingface/datasets'
+os.environ['TRANSFORMERS_CACHE'] = '/data/users/k1897038/.cache/huggingface/transformers'
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('-sl', '--summ_lim', type=int, choices=(1, 2, 3, 5, 10, 15))
+parser.add_argument('-en', '--experiment_name', type=str)
+parser.add_argument('-dsl', '--dataset_lim', type=int, default=-1)
+parser.add_argument('-lr', '--learning_rate', type=float, default=0.1)
+parser.add_argument('-e', '--epoch', type=int, default=10)
+parser.add_argument('-bs', '--batch_size', type=int, default=50)
+parser.add_argument('--run_train', type=bool, default=True)
+parser.add_argument('--run_val', type=bool, default=True)
+parser.add_argument('--run_test', type=bool, default=True)
+parser.add_argument('--checkpoint_steps', type=int, default=200)
+parser.add_argument('--use_checkpoint', type=str, default=None)
+parser.add_argument('--checkpoint_suffix', type=str, default='')
+# lstm hiddnen layers,
+# lstm bi-directional??
+
+args = parser.parse_args()
+
+
+def main():
+    sent_lim = args.summ_lim
+    dataset_size_lim = args.dataset_lim
+    bs = args.batch_size
+
+    output_dir_base_path = '/data/users/k1897038/mimic_summarisation/extractive_approach'
+    experiment_name = args.experiment_name
+    experiment_path = f'{output_dir_base_path}/{experiment_name}'
+    checkpoint_dir = f'{experiment_path}/model_checkpoints'
+    outputs_dir = f'{experiment_path}/outputs'
+    
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    os.makedirs(outputs_dir, exist_ok=True)
+
+    model = LSTMClf()
+    criterion = nn.BCEWithLogitsLoss()
+    optim = torch.optim.Adam(model.parameters(), lr=0.01)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, patience=2, threshold=0.01)
+
+    metric = load_metric('rouge')
+
+    print("Loading train data...")
+    train_ds = MimicHospCourseTrainDataset(sent_lim, size_lim=dataset_size_lim)
+    print("Loading val data...")
+    val_ds = MimicHospCourseValDataset(sent_lim, size_lim=dataset_size_lim)
+    print("Loading test data...")
+    test_ds = MimicHospCourseTestDataset(sent_lim, size_lim=dataset_size_lim)
+
+    mimic_dl = partial(DataLoader, batch_size=bs, shuffle=False, pin_memory=True)
+    train_loader = mimic_dl(train_ds, collate_fn=pad_train_sequence)
+    val_loader = mimic_dl(val_ds, collate_fn=pad_val_sequence)
+    test_loader = mimic_dl(test_ds, collate_fn=pad_test_sequence)
+
+    # checkpoint every 200 batches
+    checkpoint_after_steps = args.checkpoint_steps
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    
+    if args.run_train:
+        running_loss = []
+        cum_val_loss = 0
+        prev_chkpoint_loss = None
+        for epoch in range(args.epoch):
+            print(f'Running training epoch:{epoch}')
+            model.train()
+            for i, (inputs, input_lens, outputs) in enumerate(tqdm(train_loader)):
+                inputs, outputs = inputs.to(device), outputs.to(device)
+                logits = model(inputs, input_lens)
+                loss = criterion(logits.squeeze(), outputs)
+                loss.backward()
+                running_loss.append(loss.item())
+                parameters = filter(lambda p: p.requires_grad, model.parameters())
+                torch.nn.utils.clip_grad_norm_(parameters, 0.25)
+                optim.step()
+                optim.zero_grad()
+                if i % 20 == 0:
+                    print(f'Loss: {loss}')
+                if i % checkpoint_after_steps == 0:
+                    suffx = args.checkpoint_suffix
+                    checkpoint_name = f'{checkpoint_dir}/checkpoint-{suffx}-epoch_{epoch}-steps_{i}.pt'
+                    print(f'Avg loss: {torch.mean(torch.tensor(running_loss))}')
+                    print(f'saving checkpoint: {checkpoint_name}')
+                    torch.save(model.state_dict(), checkpoint_name)
+
+            model.eval()
+            val_loss = 0
+            for val_inputs, val_input_lens, outputs, input_sents, ref_sum_sents in val_loader:
+                # val loop
+                val_inputs = val_inputs.to(device)
+                outputs = outputs.to(device)
+                logits = model(val_inputs, val_input_lens)
+                loss = criterion(logits.squeeze(), outputs)
+                val_loss += loss.cpu().item()
+                _preds_compute(metric, logits, input_sents, val_input_lens, ref_sum_sents)
+            val_results = metric.compute()
+            json.dump(val_results,
+                      open(f'{outputs_dir}/val-results-epoch-{epoch}.json', 'w'))
+            cum_val_loss += val_loss / len(val_loader)
+            scheduler.step(cum_val_loss)
+
+    if args.run_test:
+        print('Computing Test-set predictions')
+        model.eval()
+        for test_inputs, test_input_lens, input_sents, ref_sum_sents in test_loader:
+            # test results
+            test_inputs = test_inputs.to(device)
+            logits = model(test_inputs, test_input_lens)
+            _preds_compute(metric, logits, input_sents, test_input_lens, ref_sum_sents)
+        test_results = metric.compute()
+        json.dump(test_results, open(f'{outputs_dir}/test-results.json', 'w'))
+
+
+def _preds_compute(metric, logits, input_sents, input_lens, ref_sums):
+    summ_lim = args.summ_lim
+    probs = torch.sigmoid(logits).squeeze()
+    prob_ins = [prob[:in_len] for prob, in_len in zip(probs.detach().cpu().numpy(), input_lens)]
+    # pull out top 'sum_limm' extractive sents
+    pred_indxs = [np.argpartition(p, -summ_lim)[-summ_lim:] for p in prob_ins]
+    pred_sums = []
+    for sents, p_indxs in zip(input_sents, pred_indxs):
+        pred_sums.append(''.join([sents[i] for i in p_indxs]))
+    metric.add_batch(predictions=pred_sums, references=ref_sums)
+
+
+if __name__ == '__main__':
+    main()
