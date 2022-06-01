@@ -25,6 +25,7 @@ parser.add_argument('-dsl', '--dataset_lim', type=int, default=-1)
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.01)
 parser.add_argument('-e', '--epoch', type=int, default=5)
 parser.add_argument('-bs', '--batch_size', type=int, default=50)
+parser.add_argument('--use_sbert_embeddings', type=int, default=1)
 parser.add_argument('--run_train', type=int, default=1)
 parser.add_argument('--run_val', type=int, default=1)
 parser.add_argument('--run_test', type=int, default=1)
@@ -51,8 +52,18 @@ def main():
 
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(outputs_dir, exist_ok=True)
+    
+        
+    if args.use_sbert_embeddings:
+        # default - use the sbert computed sentence emeddings
+        input_prop_name = 'text_embed_limd'
+        input_dim = 384
+    else:
+        # otherwise use spacy computed averaged GloVe sentence embeddings
+        input_prop_name = 'text_embed_limd_spacy'
+        input_dim = 300
 
-    model = LSTMClf()
+    model = LSTMClf(input_dim=input_dim)
     criterion = nn.BCEWithLogitsLoss()
     optim = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     start_epoch = 0
@@ -70,12 +81,13 @@ def main():
 
     metric = load_metric('rouge')
 
+
     print("Loading train data...")
-    train_ds = MimicHospCourseTrainDataset(sent_lim, size_lim=dataset_size_lim)
+    train_ds = MimicHospCourseTrainDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
     print("Loading val data...")
-    val_ds = MimicHospCourseValDataset(sent_lim, size_lim=dataset_size_lim)
+    val_ds = MimicHospCourseValDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
     print("Loading test data...")
-    test_ds = MimicHospCourseTestDataset(sent_lim, size_lim=dataset_size_lim)
+    test_ds = MimicHospCourseTestDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
 
     mimic_dl = partial(DataLoader, batch_size=bs, shuffle=False, pin_memory=True)
     train_loader = mimic_dl(train_ds, collate_fn=pad_train_sequence)
