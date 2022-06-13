@@ -35,6 +35,8 @@ from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
+    EncoderDecoderConfig,
+    EncoderDecoderModel,
     DataCollatorForSeq2Seq,
     HfArgumentParser,
     Seq2SeqTrainer,
@@ -72,6 +74,7 @@ class ModelArguments:
     """
 
     model_name_or_path: str = field(
+        default=None,
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     config_name: Optional[str] = field(
@@ -79,6 +82,14 @@ class ModelArguments:
     )
     tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+    )
+    encoder_name_or_path: str = field(
+        default=None,
+        metadata={"help": "Path to pretrained encoder model or identifier from huggingface.co/models"}
+    )
+    decoder_name_or_path: str = field(
+        default=None,
+        metadata={"help": "Path to pretrained decoder model or identifier from huggingface.co/models"}
     )
     cache_dir: Optional[str] = field(
         default=None,
@@ -362,29 +373,50 @@ def main():
     }
     column_names = [n for n in ds['train'].features.keys() if n not in ('hadm_id', 'text_limd', 'clean_sum')]
     
-    config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        use_fast=model_args.use_fast_tokenizer,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
 
-    model.resize_token_embeddings(len(tokenizer))
+    if model_args.encoder_name_or_path and model_args.decoder_name_or_path:
+        encoder_config = AutoConfig.from_pretrained(model_args.encoder_name_or_path, cache_dir=model_args.cache_dir)
+        decoder_config = AutoConfig.from_pretrained(model_args.decoder_name_or_path, cache_dir=model_args.cache_dir)
+        config = EncoderDecoderConfig.from_encoder_decoder_configs(encoder_config, decoder_config)
+        model = EncoderDecoderModel(config=config)
+        model.config.decoder.is_decoder = True
+        model.config.decoder.add_cross_attention = True
+        
+        tokenizer = AutoTokenizer.from_pretrained(
+           model_args.encoder_name_or_path,
+           cache_dir=model_args.cache_dir,
+           use_fast=model_args.use_fast_tokenizer,
+           revision=model_args.model_revision,
+           use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model.encoder.resize_token_embeddings(len(tokenizer))
+        model.decoder.resize_token_embeddings(len(tokenizer))
+        model.config.decoder_start_token_id = tokenizer.cls_token_id
+        model.config.pad_token_id = tokenizer.pad_token_id
+        model.config.vocab_size = model.config.decoder.vocab_size
+    else:
+        config = AutoConfig.from_pretrained(
+            model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )   
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        ) 
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model.resize_token_embeddings(len(tokenizer))
 
     if model.config.decoder_start_token_id is None:
         raise ValueError("Make sure that `config.decoder_start_token_id` is correctly defined")
@@ -442,7 +474,7 @@ def main():
         inputs = [prefix + inp for inp in inputs]
         model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
         # Setup the tokenizer for targets
-        with tokenizer.as_target_tokenizer():
+        with tokenizer.as_target_tokenizer(): 
             labels = tokenizer(targets, max_length=max_target_length, padding=padding, truncation=True)
 
         # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
@@ -451,7 +483,8 @@ def main():
             labels["input_ids"] = [
                 [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
             ]
-
+        import pdb;
+        pdb.set_trace()
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
