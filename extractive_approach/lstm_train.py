@@ -10,7 +10,7 @@ from torch.nn import LSTM
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from lstm_model import MimicHospCourseTrainDataset, MimicHospCourseValDataset, MimicHospCourseTestDataset, LSTMClf, pad_train_sequence, pad_val_sequence, pad_test_sequence
+from lstm_model import *
 from datasets import load_metric
 
 os.environ['HF_DATASETS_CACHE'] = '/data/users/k1897038/.cache/huggingface/datasets'
@@ -25,6 +25,7 @@ parser.add_argument('-dsl', '--dataset_lim', type=int, default=-1)
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.01)
 parser.add_argument('-e', '--epoch', type=int, default=5)
 parser.add_argument('-bs', '--batch_size', type=int, default=50)
+parser.add_argument('--is_cg', type=int, default=0)
 parser.add_argument('--use_sbert_embeddings', type=int, default=1)
 parser.add_argument('--run_train', type=int, default=1)
 parser.add_argument('--run_val', type=int, default=1)
@@ -52,16 +53,27 @@ def main():
 
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(outputs_dir, exist_ok=True)
-    
         
-    if args.use_sbert_embeddings:
-        # default - use the sbert computed sentence emeddings
-        input_prop_name = 'text_embed_limd'
-        input_dim = 384
+    if args.is_cg:        
+        if args.use_sbert_embeddings:
+            # default - use the sbert computed sentence emeddings
+            input_prop_name = 'sents_embed'
+            input_dim = 384
+        else:
+            # otherwise use spacy computed averaged GloVe sentence embeddings
+            input_prop_name = 'sents_embed_spacy'
+            input_dim = 300
     else:
-        # otherwise use spacy computed averaged GloVe sentence embeddings
-        input_prop_name = 'text_embed_limd_spacy'
-        input_dim = 300
+        if args.use_sbert_embeddings:
+            # default - use the sbert computed sentence emeddings
+            input_prop_name = 'text_embed_limd'
+            input_dim = 384
+        else:
+            # otherwise use spacy computed averaged GloVe sentence embeddings
+            input_prop_name = 'text_embed_limd_spacy'
+            input_dim = 300
+        
+    
 
     model = LSTMClf(input_dim=input_dim)
     criterion = nn.BCEWithLogitsLoss()
@@ -80,14 +92,23 @@ def main():
         del checkpoint
 
     metric = load_metric('rouge')
-
-
-    print("Loading train data...")
-    train_ds = MimicHospCourseTrainDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
-    print("Loading val data...")
-    val_ds = MimicHospCourseValDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
-    print("Loading test data...")
-    test_ds = MimicHospCourseTestDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
+    
+    print('args')
+    print(args)
+    if args.is_cg:
+        print("Loading CG train data...")
+        train_ds = CGTrainDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
+        print("Loading CG val data...")
+        val_ds = CGValDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
+        print("Loading CG test data...")
+        test_ds = CGTestDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
+    else:
+        print("Loading train data...")
+        train_ds = MimicHospCourseTrainDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
+        print("Loading val data...")
+        val_ds = MimicHospCourseValDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
+        print("Loading test data...")
+        test_ds = MimicHospCourseTestDataset(sent_lim, size_lim=dataset_size_lim, input_prop_name=input_prop_name)
 
     mimic_dl = partial(DataLoader, batch_size=bs, shuffle=False, pin_memory=True)
     train_loader = mimic_dl(train_ds, collate_fn=pad_train_sequence)

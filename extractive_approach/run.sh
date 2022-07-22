@@ -1,6 +1,7 @@
 cd /data/users/k1897038/mimic_summarisation/extractive_approach
 
-# python lstm_train.py -sl 1 -bs 200 -en sl1bs200 -cp sl1bs200/checkpoints/chk-epoch_5.pt-final -e 10
+##### S-BERT embeddings with M-3 ######
+# python lstm_train.py -sl 1 -bs 200 -en sl1bs200 -e 10 
 
 ## python lstm_train.py -sl 2 -bs 200 -en sl2bs200 -e 10
 
@@ -36,5 +37,34 @@ cd /data/users/k1897038/mimic_summarisation/extractive_approach
 
 # python lstm_train.py -sl 10 -bs 200 -en sl10_spacy_bs200 -e 10 --use_sbert_embeddings 0 --cuda_device 0
 
-python lstm_train.py -sl 15 -bs 200 -en sl15_spacy_bs200 -e 10 --use_sbert_embeddings 0 --cuda_device 1
+# python lstm_train.py -sl 15 -bs 200 -en sl15_spacy_bs200 -e 10 --use_sbert_embeddings 0 --cuda_device 1
+
+
+
+#### S-BERT embeddings with CG ##### 
+# python lstm_train.py -sl 1 -bs 50 -en cg-sl1bs50 -e 10 --is_cg 1
+
+python lstm_train.py -sl 2 -bs 50 -en cg-sl2bs50 -e 10 --is_cg 1
+
+python lstm_train.py -sl 3 -bs 50 -en cg-sl3bs50 -e 10 --is_cg 1
+
+python lstm_train.py -sl 5 -bs 50 -en cg-sl5bs50 -e 10 --is_cg 1
+
+python lstm_train.py -sl 10 -bs 50 -en cg-sl10bs50 -e 10 --is_cg 1
+
+python lstm_train.py -sl 15 -bs 50 -en cg-sl15bs50 -e 10 --is_cg 1
+
+### wv embeddings with cg #####
+
+python lstm_train.py -sl 1 -bs 50 -en cg-sl1bs50-wv -e 10 --is_cg 1 --use_sbert_embeddings 0
+
+python lstm_train.py -sl 2 -bs 50 -en cg-sl2bs50-wv -e 10 --is_cg 1 --use_sbert_embeddings 0
+
+python lstm_train.py -sl 3 -bs 50 -en cg-sl3bs50-wv -e 10 --is_cg 1 --use_sbert_embeddings 0
+
+python lstm_train.py -sl 5 -bs 50 -en cg-sl5bs50-wv -e 10 --is_cg 1 --use_sbert_embeddings 0
+
+python lstm_train.py -sl 10 -bs 50 -en cg-sl10bs50-wv -e 10 --is_cg 1 --use_sbert_embeddings 0
+
+python lstm_train.py -sl 15 -bs 50 -en cg-sl15bs50-wv -e 10 --is_cg 1 --use_sbert_embeddings 0
 
