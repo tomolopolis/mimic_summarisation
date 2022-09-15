@@ -94,7 +94,7 @@ class CGDataset(Dataset, ABC):
         self.pred_lim = pred_lim
         self.size_lim = size_lim
         self.input_prop_name = input_prop_name
-        ds = load_from_disk('/data/users/k1897038/cg_pre_processed')
+        ds = load_from_disk('<cg_pre_processed>')
         ds = ds.train_test_split(train_size=0.8, test_size=0.2, shuffle=False)
         if split == 'train':
             self.ds = ds['train'].sort('text_embed_len', reverse=True)
@@ -105,7 +105,7 @@ class CGDataset(Dataset, ABC):
             self.ref_sum_sents = [''.join(d) for d in self.ds[f'summ_lim_{pred_lim}']]
         columns_to_keep = [self.input_prop_name, 'text_embed_len',
                            f'summ_lim_{pred_lim}', f'preds_lim_{pred_lim}',
-                           'sents']
+                           'text_sents_limd']
         self.ds = self.ds.remove_columns(set(self.ds.features) - set(columns_to_keep))
 
     def __len__(self):
