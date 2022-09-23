@@ -6,11 +6,12 @@ from typing import Optional, Tuple, Union, Dict, Any
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers import BartTokenizer, cached_path
+from transformers import BartTokenizer, cached_path, DataCollatorForSeq2Seq, PreTrainedTokenizerBase
 from transformers.file_utils import hf_bucket_url, ModelOutput
 from transformers.modeling_outputs import Seq2SeqLMOutput, Seq2SeqModelOutput, BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.bart.modeling_bart import BartModel, BartEncoder, BartDecoder, BartConfig, \
     BartForConditionalGeneration, BartDecoderLayer, BartAttention, _expand_mask, shift_tokens_right
+from transformers.utils import PaddingStrategy
 
 
 class BartModelWithGuidance(BartModel):
@@ -562,9 +563,10 @@ class BartWithGuidanceForConditionalGeneration(BartForConditionalGeneration):
         return input_ids, model_kwargs
 
 
-def _adapted_state_dict(pretrained_model_name_or_path: str):
+def adapted_state_dict(pretrained_model_name_or_path: str, **kwargs):
     # share params from text encoder to guidance encoder.
-    state_dict = torch.load(cached_path(hf_bucket_url(pretrained_model_name_or_path, filename='pytorch_model.bin')),
+    state_dict = torch.load(cached_path(hf_bucket_url(pretrained_model_name_or_path, filename='pytorch_model.bin'),
+                                        **kwargs),
                             map_location="cpu")
     # copy filled params to missing encoder / decoder guidance_<foo> etc.
     guidance_encoder_params = {'model.guidance_encoder.' + '.'.join(k.split('.')[2:]): v for k, v in state_dict.items() if k.startswith('model.encoder')}
@@ -578,7 +580,7 @@ def _adapted_state_dict(pretrained_model_name_or_path: str):
     return revised_state_dict
 
 
-def _pad_guidance_signal(input_ids, input_guidance_ids, attention_guidance_mask, tokenizer):
+def pad_guidance_signal(input_ids, input_guidance_ids, attention_guidance_mask, tokenizer):
     """ Used to pad the guidance signal / attention mask to the same size as the input,
         assumes the guidance signal is smaller than the raw input.
      """
@@ -589,6 +591,83 @@ def _pad_guidance_signal(input_ids, input_guidance_ids, attention_guidance_mask,
     return input_guidance_ids, attention_guidance_mask
 
 
+class DataCollatorForBartGuidanceSeq2Seq(DataCollatorForSeq2Seq):
+    tokenizer: PreTrainedTokenizerBase
+    model: Optional[Any] = None
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+    label_pad_token_id: int = -100
+    return_tensors: str = "pt"
+
+    def __call__(self, features, return_tensors=None):
+        import numpy as np
+
+        if return_tensors is None:
+            return_tensors = self.return_tensors
+        labels = [feature["labels"] for feature in features] if "labels" in features[0].keys() else None
+        # We have to pad the labels before calling `tokenizer.pad` as this method won't pad them and needs them of the
+        # same length to return tensors.
+        if labels is not None:
+            max_label_length = max(len(l) for l in labels)
+            if self.pad_to_multiple_of is not None:
+                max_label_length = (
+                        (max_label_length + self.pad_to_multiple_of - 1)
+                        // self.pad_to_multiple_of
+                        * self.pad_to_multiple_of
+                )
+
+            padding_side = self.tokenizer.padding_side
+            for feature in features:
+                remainder = [self.label_pad_token_id] * (max_label_length - len(feature["labels"]))
+                if isinstance(feature["labels"], list):
+                    feature["labels"] = (
+                        feature["labels"] + remainder if padding_side == "right" else remainder + feature["labels"]
+                    )
+                elif padding_side == "right":
+                    feature["labels"] = np.concatenate([feature["labels"], remainder]).astype(np.int64)
+                else:
+                    feature["labels"] = np.concatenate([remainder, feature["labels"]]).astype(np.int64)
+
+        in_features = [{k: v for k, v in inputs.items() if k in ['input_ids', 'attention_mask', 'labels']}
+                       for inputs in features]
+
+        in_guidance_features = []
+        for inputs in features:
+            in_guidance_features.append({
+                'input_ids': inputs['input_guidance_ids'],
+                'attention_mask': inputs['attention_guidance_mask']
+            })
+        features = self.tokenizer.pad(
+            in_features,
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors=return_tensors,
+        )
+
+        guidance_features = self.tokenizer.pad(
+            in_guidance_features,
+            padding='max_length',
+            max_length=features.input_ids.shape[-1],
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors=return_tensors
+        )
+
+        features['input_guidance_ids'] = guidance_features['input_ids']
+        features['attention_guidance_mask'] = guidance_features['attention_mask']
+        # prepare decoder_input_ids
+        if (
+                labels is not None
+                and self.model is not None
+                and hasattr(self.model, "prepare_decoder_input_ids_from_labels")
+        ):
+            decoder_input_ids = self.model.prepare_decoder_input_ids_from_labels(labels=features["labels"])
+            features["decoder_input_ids"] = decoder_input_ids
+
+        return features
+
+
 if __name__ == '__main__':
     # model = BartModelWithGuidance.from_pretrained('sshleifer/bart-tiny-random')
     # model_str = 'sshleifer/bart-tiny-random'
@@ -596,14 +675,14 @@ if __name__ == '__main__':
     # model_str = 'facebook/bart-base'
     # model = BartModel.from_pretrained(model_str)
     model = BartWithGuidanceForConditionalGeneration.from_pretrained(model_str,
-                                                                     state_dict=_adapted_state_dict(model_str))
+                                                                     state_dict=adapted_state_dict(model_str))
     # model = BartForConditionalGeneration.from_pretrained(model_str)
     tok = BartTokenizer.from_pretrained(model_str)
     example_english_phrase = "UN Chief Says There Is No Threat in Syria although there is significant instability in the area"
     batch = tok(example_english_phrase, return_tensors="pt")
     example_guidance_phrase = "UN Threat Syria"
     batch_guidance = tok(example_guidance_phrase, return_tensors="pt")
-    input_guidance_ids, attention_guidance_mask = _pad_guidance_signal(batch["input_ids"], batch_guidance['input_ids'],
+    input_guidance_ids, attention_guidance_mask = pad_guidance_signal(batch["input_ids"], batch_guidance['input_ids'],
                                                                        batch_guidance['attention_mask'], tok)
     generated_ids = model.generate(batch["input_ids"], attention_mask=batch['attention_mask'],
                                    input_guidance_ids=input_guidance_ids,
