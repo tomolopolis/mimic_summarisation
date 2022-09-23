@@ -3,6 +3,7 @@
   "cache_dir": "hf_cache_dir",
   "output_dir": "outputs/bart-guidance",
   "use_fast_tokenizer": 1,
+  "ds_path": "",
   "text_column": "src_txt",
   "summary_column": "bhc_txt",
   "guidance_summ_column": "bhc_ents_txt",

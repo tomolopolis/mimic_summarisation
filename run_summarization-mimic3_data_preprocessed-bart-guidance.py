@@ -120,12 +120,8 @@ class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
-
-    dataset_name: Optional[str] = field(
-        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
-    )
-    dataset_config_name: Optional[str] = field(
-        default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
+    ds_path: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to load via load_dataset_from_disk."}
     )
     text_column: Optional[str] = field(
         default=None,
