@@ -1,7 +1,7 @@
 import os
 import random
 import re
-from typing import Optional, Tuple, Union, Dict, Any
+from typing import Optional, Tuple, Union, Dict, Any, List
 
 import torch
 from torch import nn
@@ -12,6 +12,8 @@ from transformers.modeling_outputs import Seq2SeqLMOutput, Seq2SeqModelOutput, B
 from transformers.models.bart.modeling_bart import BartModel, BartEncoder, BartDecoder, BartConfig, \
     BartForConditionalGeneration, BartDecoderLayer, BartAttention, _expand_mask, shift_tokens_right
 from transformers.utils import PaddingStrategy
+
+from transformers import Seq2SeqTrainer
 
 
 class BartModelWithGuidance(BartModel):
@@ -497,7 +499,7 @@ class BartWithGuidanceForConditionalGeneration(BartForConditionalGeneration):
         }
 
     def _prepare_encoder_decoder_kwargs_for_generation(
-            self, input_ids: torch.LongTensor, model_kwargs
+            self, input_ids: torch.LongTensor, model_kwargs, model_input_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """ largely copied over from transformers.generation_utils.GenerationMixin """
         if "encoder_outputs" not in model_kwargs:
@@ -508,7 +510,7 @@ class BartWithGuidanceForConditionalGeneration(BartForConditionalGeneration):
                 argument: value
                 for argument, value in model_kwargs.items()
                 if not (argument.startswith("decoder_") or argument.startswith("cross_attn")
-                        or argument in ['input_guidance_ids', 'attention_guidance_mask'])
+                        or argument in ['input_guidance_ids', 'attention_guidance_mask', 'use_cache'])
             }
             encoder_outputs: ModelOutput = encoder(input_ids, return_dict=True, **encoder_kwargs)
 
@@ -520,7 +522,7 @@ class BartWithGuidanceForConditionalGeneration(BartForConditionalGeneration):
                 argument: value
                 for argument, value in model_kwargs.items()
                 if not (argument.startswith("decoder_") or argument.startswith("cross_attn") or
-                        argument in ['input_ids', 'input_guidance_ids', 'attention_guidance_mask'])
+                        argument in ['input_ids', 'input_guidance_ids', 'attention_guidance_mask', 'use_cache'])
             }
             guidance_encoder_kwargs['attention_mask'] = attention_guidance_mask
             encoder_guidance_outputs: ModelOutput = guidance_encoder(input_guidance_ids, return_dict=True,
@@ -666,6 +668,83 @@ class DataCollatorForBartGuidanceSeq2Seq(DataCollatorForSeq2Seq):
             features["decoder_input_ids"] = decoder_input_ids
 
         return features
+
+
+class BartGuidanceSeq2SeqTrainer(Seq2SeqTrainer):
+
+    def prediction_step(
+            self,
+            model: nn.Module,
+            inputs: Dict[str, Union[torch.Tensor, Any]],
+            prediction_loss_only: bool,
+            ignore_keys: Optional[List[str]] = None,
+    ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """ Implementation is the equivalent to the super class but includes the extra inputs for the
+        guidance encoder, "inputs_guidance_ids" and "attention_guidance_mask"
+        There's no DRY-er way to do it unfortunately.
+        """
+        if not self.args.predict_with_generate or prediction_loss_only:
+            return super().prediction_step(
+                model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys
+            )
+
+        has_labels = "labels" in inputs
+        inputs = self._prepare_inputs(inputs)
+
+        gen_kwargs = {
+            "max_length": self._max_length if self._max_length is not None else self.model.config.max_length,
+            "num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
+            "synced_gpus": False,
+        }
+
+        if "attention_mask" in inputs:
+            gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
+        if "global_attention_mask" in inputs:
+            gen_kwargs["global_attention_mask"] = inputs.get("global_attention_mask", None)
+
+        #####  include guidance signal for prediction inputs  ######
+        gen_kwargs['input_guidance_ids'] = inputs['input_guidance_ids']
+        gen_kwargs['attention_guidance_mask'] = inputs['attention_guidance_mask']
+        ###### end extra inputs to be sent to model ######
+
+        # prepare generation inputs
+        # some encoder-decoder models can have varying encoder's and thus
+        # varying model input names
+        if hasattr(self.model, "encoder") and self.model.encoder.main_input_name != self.model.main_input_name:
+            generation_inputs = inputs[self.model.encoder.main_input_name]
+        else:
+            generation_inputs = inputs[self.model.main_input_name]
+
+        generated_tokens = self.model.generate(
+            generation_inputs,
+            **gen_kwargs,
+        )
+        # in case the batch is shorter than max length, the output should be padded
+        if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
+            generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
+
+        with torch.no_grad():
+            with self.autocast_smart_context_manager():
+                outputs = model(**inputs)
+            if has_labels:
+                if self.label_smoother is not None:
+                    loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
+                else:
+                    loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
+            else:
+                loss = None
+
+        if self.args.prediction_loss_only:
+            return (loss, None, None)
+
+        if has_labels:
+            labels = inputs["labels"]
+            if labels.shape[-1] < gen_kwargs["max_length"]:
+                labels = self._pad_tensors_to_max_len(labels, gen_kwargs["max_length"])
+        else:
+            labels = None
+
+        return (loss, generated_tokens, labels)
 
 
 if __name__ == '__main__':

@@ -50,8 +50,8 @@ from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-from mimic_sum.guidance_models.BARTModelWithGuidance import BartWithGuidanceForConditionalGeneration, \
-    adapted_state_dict, pad_guidance_signal, DataCollatorForBartGuidanceSeq2Seq
+from guidance_models.BARTModelWithGuidance import BartWithGuidanceForConditionalGeneration, \
+    adapted_state_dict, DataCollatorForBartGuidanceSeq2Seq, BartGuidanceSeq2SeqTrainer
 
 check_min_version("4.10.0.dev0")
 
@@ -593,7 +593,7 @@ def main(path=None):
         return result
 
     # Initialize our Trainer
-    trainer = Seq2SeqTrainer(
+    trainer = BartGuidanceSeq2SeqTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
