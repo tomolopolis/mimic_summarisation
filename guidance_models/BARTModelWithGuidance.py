@@ -18,7 +18,7 @@ from transformers import Seq2SeqTrainer
 
 class BartModelWithGuidance(BartModel):
 
-    def __init__(self, config: BartConfig, shared_encoder_layers=-1):
+    def __init__(self, config: BartConfig, shared_encoder_layers=3):
         r"""
 
         :param config: regular BART config
@@ -33,7 +33,7 @@ class BartModelWithGuidance(BartModel):
         self.decoder = BartDecoderWithGuidance(config, self.shared)
 
         # share first X encoder layers
-        if shared_encoder_layers == -1 or shared_encoder_layers > self.config.encoder_layers:
+        if shared_encoder_layers == -1 or shared_encoder_layers >= self.config.encoder_layers:
             shared_encoder_layers_lim: int = self.config.encoder_layers - 1
         else:
             shared_encoder_layers_lim: int = shared_encoder_layers

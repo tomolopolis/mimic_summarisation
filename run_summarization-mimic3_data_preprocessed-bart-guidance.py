@@ -352,8 +352,8 @@ def main(path=None):
     # download model & vocab.
     
     # train test splits
-    # ds = load_from_disk('/data/users/k1897038/mimic3_dataset_pre_processed')
-    ds = Dataset.from_pandas(pd.read_json('/Users/tom/phd/summariser/data/small_ds.json'))
+    ds_path = data_args.ds_path
+    ds = load_from_disk(ds_path)
 
     src_col = data_args.text_column
     ds = ds.train_test_split(train_size=0.8, test_size=0.2, shuffle=False)

@@ -1,9 +1,8 @@
 jupyterlab~=3.1
-torch~=1.9
-datasets~=1.11
-seaborn~=0.11
 pandas~=1.1
 numpy~=1.21
-nltk~=3.6
-rouge-score==0.0.4
+nltk==3.7
+rouge-score==0.1.2
+transformers==4.19.4
+datasets==2.2.2
 # medcat~=1.1 installs transformers, etc.
