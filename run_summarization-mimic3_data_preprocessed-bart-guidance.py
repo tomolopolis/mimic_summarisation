@@ -214,6 +214,12 @@ class DataTrainingArguments:
             "value if set."
         },
     )
+    save_all_preds: bool = field(
+        default=False,
+        metadata={
+            "help": "save all preds during evaluation or prediction, ignores num_rand_pred_samples if this is True"
+        }
+    ),
     num_rand_pred_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -316,35 +322,6 @@ def main(path=None):
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    # Get the datasets: you can either provide your own CSV/JSON training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub).
-    #
-    # For CSV/JSON files this script will use the first column for the full texts and the second column for the
-    # summaries (unless you specify column names for this with the `text_column` and `summary_column` arguments).
-    #
-    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-    # download the dataset.
-#     if data_args.dataset_name is not None:
-#         # Downloading and loading a dataset from the hub.
-#         raw_datasets = load_dataset(
-#             data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir
-#         )
-#     else:
-#         data_files = {}
-#         if data_args.train_file is not None:
-#             data_files["train"] = data_args.train_file
-#             extension = data_args.train_file.split(".")[-1]
-#         if data_args.validation_file is not None:
-#             data_files["validation"] = data_args.validation_file
-#             extension = data_args.validation_file.split(".")[-1]
-#         if data_args.test_file is not None:
-#             data_files["test"] = data_args.test_file
-#             extension = data_args.test_file.split(".")[-1]
-#         raw_datasets = load_dataset(extension, data_files=data_files, cache_dir=model_args.cache_dir)
-    # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
-
     # Load pretrained model and tokenizer
     #
     # Distributed training:
@@ -367,13 +344,6 @@ def main(path=None):
         'test': test_ds,
     }
 
-    # ds['train'] = ds['train'].sort('src-text', reverse=True)
-    # raw_datasets = {
-    #     'train': ds['train'],
-    #     'validation': ds['train'],
-    #     'test': ds['train'],
-    # }
-
     column_names = [n for n in ds['train'].features.keys() if n not in ('hadm_id', 'text_limd', 'clean_sum')]
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -389,49 +359,10 @@ def main(path=None):
                                                                      state_dict=adapted_state_dict(model_args.model_name_or_path,
                                                                                                    cache_dir=model_args.cache_dir),
                                                                      cache_dir=model_args.cache_dir)
-    # model = AutoModelForSeq2SeqLM.from_pretrained(
-    #     model_args.model_name_or_path,
-    #     from_tf=bool(".ckpt" in model_args.model_name_or_path),
-    #     config=config,
-    #     cache_dir=model_args.cache_dir,
-    #     revision=model_args.model_revision,
-    #     use_auth_token=True if model_args.use_auth_token else None,
-    # )
     model.resize_token_embeddings(len(tokenizer))
 
     if model.config.decoder_start_token_id is None:
         raise ValueError("Make sure that `config.decoder_start_token_id` is correctly defined")
-
-#     # Preprocessing the datasets.
-#     # We need to tokenize inputs and targets.
-#     if training_args.do_train:
-#         column_names = raw_datasets["train"].column_names
-#     elif training_args.do_eval:
-#         column_names = raw_datasets["validation"].column_names
-#     elif training_args.do_predict:
-#         column_names = raw_datasets["test"].column_names
-#     else:
-#         logger.info("There is nothing to do. Please pass `do_train`, `do_eval` and/or `do_predict`.")
-#         return
-
-    # Get the column names for input/target.
-#     dataset_columns = summarization_name_mapping.get(data_args.dataset_name, None)
-#     if data_args.text_column is None:
-#         text_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
-#     else:
-#         text_column = data_args.text_column
-#         if text_column not in column_names:
-#             raise ValueError(
-#                 f"--text_column' value '{data_args.text_column}' needs to be one of: {', '.join(column_names)}"
-#             )
-#     if data_args.summary_column is None:
-#         summary_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-#     else:
-#         summary_column = data_args.summary_column
-#         if summary_column not in column_names:
-#             raise ValueError(
-#                 f"--summary_column' value '{data_args.summary_column}' needs to be one of: {', '.join(column_names)}"
-#             )
 
     # Temporarily set max_target_length for training.
     max_target_length = data_args.max_target_length
@@ -576,7 +507,11 @@ def main(path=None):
         decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
 
         # save a random sample of preds / labels
-        if data_args.num_rand_pred_samples:
+        if data_args.save_all_preds and eval_file_name:
+            preds_labels_indices = [(i, decoded_preds[i], decoded_labels[i]) for i in range(len(decoded_preds))]
+            with open(os.path.join(training_args.output_dir, eval_file_name), 'w') as f:
+                json.dump(preds_labels_indices, f, indent=2)
+        elif data_args.num_rand_pred_samples:
             rnd_preds = np.random.choice(range(len(decoded_preds)), data_args.num_rand_pred_samples, replace=False)
             preds_labels_indices = [(int(i), decoded_preds[i], decoded_labels[i]) for i in rnd_preds]
             with open(os.path.join(training_args.output_dir, 'rand_sample_preds.json'), 'w') as f:
@@ -603,6 +538,8 @@ def main(path=None):
         compute_metrics=compute_metrics if training_args.predict_with_generate else None,
     )
 
+    eval_file_name = None
+
     # Training
     if training_args.do_train:
         checkpoint = None
@@ -628,6 +565,9 @@ def main(path=None):
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
 
+        if data_args.save_all_preds:
+            eval_file_name = "all_eval_set.json"
+
         metrics = trainer.evaluate(
             max_length=data_args.val_max_target_length, num_beams=data_args.num_beams, metric_key_prefix="eval"
         )
@@ -639,6 +579,9 @@ def main(path=None):
 
     if training_args.do_predict:
         logger.info("*** Predict ***")
+
+        if data_args.save_all_preds:
+            eval_file_name = "all_preds_set.json"
 
         predict_results = trainer.predict(
             predict_dataset,
@@ -686,4 +629,4 @@ def _mp_fn(index):
 
 
 if __name__ == "__main__":
-    main(path="experiment_cfg/mim3/bart-guidance.json")
+    main()
