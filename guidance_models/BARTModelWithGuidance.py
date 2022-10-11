@@ -567,9 +567,13 @@ class BartWithGuidanceForConditionalGeneration(BartForConditionalGeneration):
 
 def adapted_state_dict(pretrained_model_name_or_path: str, **kwargs):
     # share params from text encoder to guidance encoder.
-    state_dict = torch.load(cached_path(hf_bucket_url(pretrained_model_name_or_path, filename='pytorch_model.bin'),
-                                        **kwargs),
-                            map_location="cpu")
+    try:
+        # attempt to load raw path
+        path = cached_path(pretrained_model_name_or_path + '/pytorch_model.bin', **kwargs)
+    except OSError:
+        path = cached_path(hf_bucket_url(pretrained_model_name_or_path, filename='pytorch_model.bin'), **kwargs)
+
+    state_dict = torch.load(path, map_location="cpu")
     # copy filled params to missing encoder / decoder guidance_<foo> etc.
     guidance_encoder_params = {'model.guidance_encoder.' + '.'.join(k.split('.')[2:]): v for k, v in state_dict.items() if k.startswith('model.encoder')}
     decoder_encoder_guidance_attn_params = {k.replace('encoder_attn', 'encoder_guidance_attn'): v for k, v in state_dict.items()
